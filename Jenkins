@@ -1,0 +1,73 @@
+pipeline{
+	agent any 
+
+	tools {
+		maven "MAVEN3"
+	}
+
+	environment {
+		registry = "bin5988/vprofile"
+		registryCredential = "dockerhub" //same name declared in jenkins
+	}
+
+	//source code in the same location, no need fetch code
+
+	stages  {
+		stage ('Build') {
+			steps {
+				sh 'mvn clean install -DskipTests'
+			}
+			post {
+				success{
+					echo 'Now Arciving...'
+					archiveArtifacts artifacts: '**/target/*.war'
+				}
+			}
+		}
+		stage ('ÇODE ANALYSIS WITH SONARQUBE') {
+			environment {
+				scannerHome = tool 'mysonarscanner4'
+			}
+			steps {
+				withSonarQubeEnv('sonar-pro') {
+					sh '''${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=vprofile \
+					-Dsonar.projectName=vprofile-repo \
+					-Dsonar.projectVersion=1.0 \
+					-Dsonar.sources=src/ \
+					-Dsonar.java.binaries=target/test-classes/com/visualpathit/account/controllerTest/ \
+					-Dsonar.junit.reportsPath=target/surefire-reports/ \
+					-Dsonar.jacoco.reportsPath=target/jacoco.exec \
+					-Dsonar.java.checkstyle.reportPaths=target/checkstyle-result.xml'''
+				}
+				//timeout (time: 10, unit: 'MINUTES'){
+				//	waitForQualityGate abortPipeline: true
+				//}
+			}
+		}
+		// build docker images from Dockerfile in directory
+		stage ('BUILD DOCKER IMAGES') {
+			steps{
+				script {
+					dockerImage = docker.build registry + ":V$BUILD_NUMBER"
+				}
+			}
+		}
+		stage ('UPLOAD IMAGE'){
+			steps{
+				script{
+					docker.withRegistry ('', registryCredential){
+						dockerImage.push("V$BUILD_NUMBER")
+						dockerImage.push("${registry}:latest")
+					}
+				}
+			}
+		}
+		// rm image from jenkins server
+		stage ('REMOVE UNUSED DOKCER IMAGES') {
+			steps {
+				sh "docker rmi -f $registry:V$BUILD_NUMBER"
+			}
+		}
+		// create k8s cluster	
+	}
+}
