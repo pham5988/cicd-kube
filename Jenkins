@@ -24,7 +24,7 @@ pipeline{
 				}
 			}
 		}
-		stage ('ÇODE ANALYSIS WITH SONARQUBE') {
+		stage ('CODE ANALYSIS WITH SONARQUBE') {
 			environment {
 				scannerHome = tool 'mysonarscanner4'
 			}
@@ -68,6 +68,12 @@ pipeline{
 				sh "docker rmi -f $registry:V$BUILD_NUMBER"
 			}
 		}
-		// create k8s cluster	
+		// Create k8s cluster 
+		stage('K8S DEPLOY') {
+			agent {label 'KOPS'}
+			steps {
+				sh "helm upgarde --install --force vprofile-stack helm/vprofilecharts --set appimage=${registry}:V${BUILD_NUMBER} --namespace prod"
+			}
+		}	
 	}
 }
